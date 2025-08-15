@@ -1,32 +1,30 @@
 import streamlit as st
-import tensorflow as tf
-import numpy as np
-from PIL import Image
-import io
+st.set_page_config(page_title="Deteksi Penyakit Jeruk", layout="wide")
+
 import os
+import io
 import sqlite3
+from datetime import datetime
+
+import numpy as np
 import pandas as pd
+import tensorflow as tf
+from PIL import Image
+from fpdf import FPDF
 import gdown
 
-# ===== KONFIGURASI =====
+# ==========================
+# KONFIGURASI
+# ==========================
 MODEL_PATH = "model_cnn.keras"
 DRIVE_FILE_ID = "16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
 DB_PATH = "riwayat.db"
+CLASS_NAMES = ["blackspot", "canker", "fresh", "greening"]  # ≤— sesuaikan urutan output model
+TARGET_SIZE = (256, 256)  # ≤— sesuaikan dengan input size saat training
 
-# ===== FUNGSI DOWNLOAD & LOAD MODEL =====
-@st.cache_resource
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        st.info("Mengunduh model dari Google Drive...")
-        url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
-        gdown.download(url, MODEL_PATH, quiet=False)
-    try:
-        return tf.keras.models.load_model(MODEL_PATH)
-    except Exception as e:
-        st.error(f"Gagal memuat model: {e}")
-        return None
-
-# ===== INISIALISASI DATABASE =====
+# ==========================
+# UTIL DB
+# ==========================
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -54,54 +52,91 @@ def ambil_riwayat():
     conn.close()
     return df
 
-# ===== MULAI STREAMLIT APP =====
-st.set_page_config(page_title="Deteksi Penyakit Jeruk", layout="wide")
+# ==========================
+# LOAD MODEL (CACHED)
+# ==========================
+@st.cache_resource
+def load_model():
+    if not os.path.exists(MODEL_PATH):
+        st.info("Mengunduh model dari Google Drive...")
+        url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+        gdown.download(url, MODEL_PATH, quiet=False)
+    # Penting: pastikan versi TF/Keras kompatibel dengan file model
+    model = tf.keras.models.load_model(MODEL_PATH)
+    return model
+
+# Inisialisasi
 init_db()
 
-model = load_model()
-class_names = ["Busuk", "Sehat"]  # sesuaikan dengan model kamu
+# Coba load model
+_model_ok = True
+try:
+    model = load_model()
+except Exception as e:
+    _model_ok = False
+    model = None
+    st.error(f"Gagal memuat model: {e}")
+    st.info("Pastikan versi TensorFlow/Keras kompatibel dengan file .keras yang kamu unggah.")
 
+# ==========================
+# UI
+# ==========================
 tab1, tab2, tab3 = st.tabs(["📷 Deteksi", "📜 Riwayat", "📊 Laporan"])
 
-# ===== TAB 1: DETEKSI =====
+# -------- TAB 1: DETEKSI --------
 with tab1:
     st.header("Deteksi Penyakit Jeruk 🍊")
 
     uploaded_file = st.file_uploader("Unggah gambar jeruk", type=["jpg", "jpeg", "png"])
-    if uploaded_file and model is not None:
+    deteksi_btn = st.button("Deteksi", disabled=(not _model_ok or uploaded_file is None))
+
+    if uploaded_file is not None:
         img = Image.open(uploaded_file).convert("RGB")
-        img_resized = img.resize((128, 128))
-        img_array = np.array(img_resized) / 255.0
-        reshaped_img = np.expand_dims(img_array, axis=0)
+        st.image(img, caption="Gambar yang diunggah", width=320)
 
-        prediction = model.predict(reshaped_img)
-        predicted_class = class_names[np.argmax(prediction)]
-        confidence = np.max(prediction) * 100
+    if deteksi_btn:
+        try:
+            # Preprocess
+            img_resized = img.resize(TARGET_SIZE)
+            img_array = np.asarray(img_resized, dtype=np.float32) / 255.0
+            batch = np.expand_dims(img_array, axis=0)
 
-        st.image(img, caption="Gambar yang diunggah", width=300)
-        st.success(f"Prediksi: **{predicted_class}** ({confidence:.2f}%)")
+            # Predict
+            preds = model.predict(batch)
+            idx = int(np.argmax(preds, axis=1)[0])
+            predicted_class = CLASS_NAMES[idx]
+            confidence = float(np.max(preds)) * 100.0
 
-        simpan_riwayat(uploaded_file.name, predicted_class)
+            st.success(f"Prediksi: **{predicted_class}** ({confidence:.2f}%)")
 
-# ===== TAB 2: RIWAYAT =====
+            # Simpan riwayat
+            simpan_riwayat(uploaded_file.name, predicted_class)
+
+        except Exception as e:
+            st.error(f"Terjadi error saat prediksi: {e}")
+            st.stop()
+
+# -------- TAB 2: RIWAYAT --------
 with tab2:
     st.header("Riwayat Deteksi")
-    riwayat_df = ambil_riwayat()
-    if not riwayat_df.empty:
-        st.dataframe(riwayat_df)
-    else:
+    df = ambil_riwayat()
+    if df.empty:
         st.info("Belum ada riwayat deteksi.")
+    else:
+        st.dataframe(df, use_container_width=True)
 
-# ===== TAB 3: LAPORAN =====
+# -------- TAB 3: LAPORAN --------
 with tab3:
     st.header("Laporan Training Model")
-    
-    if os.path.exists("training_accuracy.png"):
-        st.image("training_accuracy.png", caption="Training Accuracy", width=400)
-    else:
-        st.warning("Gambar training_accuracy.png tidak ditemukan.")
+    acc_path = "training_accuracy.png"
+    loss_path = "training_loss.png"
 
-    if os.path.exists("training_loss.png"):
-        st.image("training_loss.png", caption="Training Loss", width=400)
+    if os.path.exists(acc_path):
+        st.image(acc_path, caption="Training Accuracy", width=400)
     else:
-        st.warning("Gambar training_loss.png tidak ditemukan.")
+        st.warning(f"Gambar {acc_path} tidak ditemukan.")
+
+    if os.path.exists(loss_path):
+        st.image(loss_path, caption="Training Loss", width=400)
+    else:
+        st.warning(f"Gambar {loss_path} tidak ditemukan.")
