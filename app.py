@@ -55,28 +55,28 @@ def ambil_riwayat():
 # ==========================
 # LOAD MODEL (CACHED)
 # ==========================
+# LOAD MODEL (CACHED)
+# ==========================
 @st.cache_resource
 def load_model():
     if not os.path.exists(MODEL_PATH):
         st.info("Mengunduh model dari Google Drive...")
         url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
         gdown.download(url, MODEL_PATH, quiet=False)
-    # Penting: pastikan versi TF/Keras kompatibel dengan file model
-    model = tf.keras.models.load_model(MODEL_PATH)
-    return model
+    return tf.keras.models.load_model(MODEL_PATH)
 
 # Inisialisasi
 init_db()
 
-# Coba load model
-_model_ok = True
+# Load model
 try:
     model = load_model()
+    _model_ok = True
 except Exception as e:
-    _model_ok = False
-    model = None
     st.error(f"Gagal memuat model: {e}")
-    st.info("Pastikan versi TensorFlow/Keras kompatibel dengan file .keras yang kamu unggah.")
+    model = None
+    _model_ok = False
+
 
 # ==========================
 # UI
@@ -140,3 +140,4 @@ with tab3:
         st.image(loss_path, caption="Training Loss", width=400)
     else:
         st.warning(f"Gambar {loss_path} tidak ditemukan.")
+
