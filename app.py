@@ -15,19 +15,20 @@ import requests
 # ==========================
 # Download & Load Model
 # ==========================
+
+MODEL_PATH = "model_cnn.keras"
+
 @st.cache_resource
 def load_model():
-    model_path = "model_cnn.keras"
-    if not os.path.exists(model_path):
-        # Download dari Google Drive (direct link)
+    if not os.path.exists(MODEL_PATH):
         url = "https://drive.google.com/uc?export=download&id=16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
         r = requests.get(url)
-        with open(model_path, "wb") as f:
+        with open(MODEL_PATH, "wb") as f:
             f.write(r.content)
-    return tf.keras.models.load_model(model_path)
+    return tf.keras.models.load_model(MODEL_PATH)
 
+# Load model
 model = load_model()
-class_names = ["blackspot", "canker", "fresh", "greening"]
 
 # ==========================
 # Inisialisasi
@@ -162,3 +163,4 @@ elif st.session_state.selected_tab == "Laporan":
         st.image("loss.png", caption="Training Loss", width=400)
     if os.path.exists("reportt.png"):
         st.image("reportt.png", caption="Classification Report", width=400)
+
