@@ -1,172 +1,107 @@
 import streamlit as st
-st.set_page_config(page_title="Deteksi Jeruk", layout="centered")  
-
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-import sqlite3
-import os
 import io
-from datetime import datetime
-from fpdf import FPDF
-from database import init_db, simpan_riwayat, ambil_riwayat, hapus_riwayat
-import requests
-from PIL import Image
+import os
+import sqlite3
+import pandas as pd
+import gdown
 
-# ==========================
-# Download & Load Model
-# ==========================
-
+# ===== KONFIGURASI =====
 MODEL_PATH = "model_cnn.keras"
+DRIVE_FILE_ID = "16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
+DB_PATH = "riwayat.db"
 
+# ===== FUNGSI DOWNLOAD & LOAD MODEL =====
 @st.cache_resource
 def load_model():
     if not os.path.exists(MODEL_PATH):
-        url = "https://drive.google.com/uc?export=download&id=16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
-        r = requests.get(url)
-        with open(MODEL_PATH, "wb") as f:
-            f.write(r.content)
-    return tf.keras.models.load_model(MODEL_PATH)
+        st.info("Mengunduh model dari Google Drive...")
+        url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+        gdown.download(url, MODEL_PATH, quiet=False)
+    try:
+        return tf.keras.models.load_model(MODEL_PATH)
+    except Exception as e:
+        st.error(f"Gagal memuat model: {e}")
+        return None
 
-# Load model
-model = load_model()
-# Daftar kelas sesuai urutan output model
-class_names = ["blackspot", "canker", "fresh", "greening"]
+# ===== INISIALISASI DATABASE =====
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS riwayat (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            prediksi TEXT,
+            waktu TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
 
+def simpan_riwayat(filename, prediksi):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO riwayat (filename, prediksi) VALUES (?, ?)", (filename, prediksi))
+    conn.commit()
+    conn.close()
 
-# ==========================
-# Inisialisasi
-# ==========================
-st.title("Sistem Deteksi Penyakit Buah Jeruk")
+def ambil_riwayat():
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("SELECT * FROM riwayat ORDER BY waktu DESC", conn)
+    conn.close()
+    return df
+
+# ===== MULAI STREAMLIT APP =====
+st.set_page_config(page_title="Deteksi Penyakit Jeruk", layout="wide")
 init_db()
 
-# Navigasi Sidebar
-st.sidebar.title("Navigasi")
-if "selected_tab" not in st.session_state:
-    st.session_state.selected_tab = "Deteksi"
+model = load_model()
+class_names = ["Busuk", "Sehat"]  # sesuaikan dengan model kamu
 
-if st.sidebar.button("Deteksi"):
-    st.session_state.selected_tab = "Deteksi"
-if st.sidebar.button("Riwayat Deteksi"):
-    st.session_state.selected_tab = "Riwayat Deteksi"
-if st.sidebar.button("Laporan"):
-    st.session_state.selected_tab = "Laporan"
+tab1, tab2, tab3 = st.tabs(["📷 Deteksi", "📜 Riwayat", "📊 Laporan"])
 
-# ==========================
-# Fungsi Buat PDF
-# ==========================
-def buat_laporan_pdf(result, deskripsi, image):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+# ===== TAB 1: DETEKSI =====
+with tab1:
+    st.header("Deteksi Penyakit Jeruk 🍊")
 
-    waktu = datetime.now().strftime("%d-%m-%Y %H:%M")
-    pdf.cell(200, 10, txt="Hasil Deteksi Penyakit Jeruk", ln=True, align='C')
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Waktu: {waktu}", ln=True)
-    pdf.cell(200, 10, txt=f"Hasil Deteksi: {result.upper()}", ln=True)
-    pdf.multi_cell(0, 10, txt=f"Penjelasan: {deskripsi}")
-    pdf.ln(5)
+    uploaded_file = st.file_uploader("Unggah gambar jeruk", type=["jpg", "jpeg", "png"])
+    if uploaded_file and model is not None:
+        img = Image.open(uploaded_file).convert("RGB")
+        img_resized = img.resize((128, 128))
+        img_array = np.array(img_resized) / 255.0
+        reshaped_img = np.expand_dims(img_array, axis=0)
 
-    temp_img_path = "temp_image.png"
-    image.save(temp_img_path)
-    pdf.image(temp_img_path, x=10, y=None, w=100)
-    pdf.ln(15)
-    pdf.cell(200, 10, txt="Penulis : Fatimah Azahrah", ln=True, align='C')
+        prediction = model.predict(reshaped_img)
+        predicted_class = class_names[np.argmax(prediction)]
+        confidence = np.max(prediction) * 100
 
-    pdf_output = pdf.output(dest='S').encode('latin1')
-    if os.path.exists(temp_img_path):
-        os.remove(temp_img_path)
+        st.image(img, caption="Gambar yang diunggah", width=300)
+        st.success(f"Prediksi: **{predicted_class}** ({confidence:.2f}%)")
 
-    return pdf_output
+        simpan_riwayat(uploaded_file.name, predicted_class)
 
-# ==========================
-# Tab Deteksi
-# ==========================
-if st.session_state.selected_tab == "Deteksi":
-    st.subheader("Upload Gambar Buah Jeruk")
-    uploaded_file = st.file_uploader("Pilih Gambar (jpg, jpeg, png)", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file).convert('RGB')
-        st.image(image, caption='Gambar yang Diunggah', width=300)
-
-        if st.button("Deteksi Buah Jeruk"):
-            with st.spinner("Memproses..."):
-                img = image.resize((256, 256))
-                img_array = np.asarray(img) / 255.0
-                reshaped_img = np.expand_dims(img_array, axis=0)
-
-                prediction = model.predict(reshaped_img)
-                result = class_names[np.argmax(prediction)]
-
-                # Deskripsi
-                if result == "blackspot":
-                    deskripsi = "Black Spot adalah penyakit akibat jamur Guignardia Citricarpa..."
-                elif result == "canker":
-                    deskripsi = "Canker adalah penyakit akibat bakteri X. axonopodis pv. citri..."
-                elif result == "fresh":
-                    deskripsi = "Buah jeruk dalam kondisi segar dan sehat."
-                elif result == "greening":
-                    deskripsi = "Greening adalah penyakit serius akibat bakteri Candidatus Liberibacter spp."
-                else:
-                    deskripsi = "Kategori tidak dikenali."
-
-                st.success(f"Hasil Deteksi: {result.upper()}")
-                st.markdown(deskripsi)
-
-                # Simpan ke database
-                img_byte_arr = io.BytesIO()
-                image.save(img_byte_arr, format='PNG')
-                simpan_riwayat(uploaded_file.name, result, img_byte_arr.getvalue())
-
-                # Download PDF
-                laporan_pdf = buat_laporan_pdf(result, deskripsi, image)
-                st.download_button(
-                    label="Download Hasil Deteksi (PDF)",
-                    data=laporan_pdf,
-                    file_name="hasil_deteksi.pdf",
-                    mime="application/pdf"
-                )
-
-# ==========================
-# Tab Riwayat
-# ==========================
-elif st.session_state.selected_tab == "Riwayat Deteksi":
-    st.subheader("Riwayat Gambar Deteksi")
-    data_riwayat = ambil_riwayat()
-
-    if data_riwayat:
-        for id_data, nama_file, hasil, gambar_blob in data_riwayat:
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                st.markdown(f"**{nama_file}** — Hasil: **{hasil}**")
-                img = Image.open(io.BytesIO(gambar_blob))
-                st.image(img, width=250)
-            with col2:
-                if st.button("Hapus", key=f"hapus_{id_data}"):
-                    hapus_riwayat(id_data)
-                    st.success(f"Riwayat '{nama_file}' berhasil dihapus.")
-                    st.experimental_rerun()
-            st.markdown("---")
+# ===== TAB 2: RIWAYAT =====
+with tab2:
+    st.header("Riwayat Deteksi")
+    riwayat_df = ambil_riwayat()
+    if not riwayat_df.empty:
+        st.dataframe(riwayat_df)
     else:
         st.info("Belum ada riwayat deteksi.")
 
-# ==========================
-# Tab Laporan
-# ==========================
-elif st.session_state.selected_tab == "Laporan":
-    st.subheader("Laporan Hasil Pelatihan Model CNN")
-    st.markdown(
-        "Berikut hasil pelatihan model berupa grafik akurasi dan loss..."
-    )
+# ===== TAB 3: LAPORAN =====
+with tab3:
+    st.header("Laporan Training Model")
+    
+    if os.path.exists("training_accuracy.png"):
+        st.image("training_accuracy.png", caption="Training Accuracy", width=400)
+    else:
+        st.warning("Gambar training_accuracy.png tidak ditemukan.")
 
-    if os.path.exists("accuracy.png"):
-        st.image("accuracy.png", caption="Training Accuracy", width=400)
-    if os.path.exists("loss.png"):
-        st.image("loss.png", caption="Training Loss", width=400)
-    if os.path.exists("reportt.png"):
-        st.image("reportt.png", caption="Classification Report", width=400)
-
-
-
+    if os.path.exists("training_loss.png"):
+        st.image("training_loss.png", caption="Training Loss", width=400)
+    else:
+        st.warning("Gambar training_loss.png tidak ditemukan.")
