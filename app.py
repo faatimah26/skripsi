@@ -16,18 +16,11 @@ import requests
 # Load Model
 # ---------------------------
 
-
 @st.cache_resource
 def load_model():
-    model_path = "model_cnn.keras"
-    if not os.path.exists(model_path):
-        url = "https://drive.google.com/uc?export=download&id=16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
-        r = requests.get(url)
-        with open(model_path, "wb") as f:
-            f.write(r.content)
+    model_path = os.path.join("assets", "model_cnn.keras")
     return tf.keras.models.load_model(model_path)
 
-model = load_model()
 
 
 # ---------------------------
@@ -160,6 +153,7 @@ elif st.session_state.selected_tab == "Laporan":
     st.markdown("Berikut merupakan hasil pelatihan model yang ditampilkan dalam grafik akurasi dan grafik loss, serta dilengkapi dengan laporan klasifikasi (classification report)." \
     "Selama proses training, model menunjukkan peningkatan akurasi hingga mencapai sekitar 94%.")
 
-    st.image("D:/program skripsi/accuracy.png", caption="Training Accuracy", width=400)
-    st.image("D:/program skripsi/loss.png", caption="Training Loss", width=400)
-    st.image("D:/program skripsi/reportt.png", caption="Classification Report", width=400)
+    st.image("assets/accuracy.png", caption="Training Accuracy", width=400)
+st.image("assets/loss.png", caption="Training Loss", width=400)
+st.image("assets/reportt.png", caption="Classification Report", width=400)
+
