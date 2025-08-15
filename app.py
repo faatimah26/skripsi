@@ -11,6 +11,7 @@ from datetime import datetime
 from fpdf import FPDF
 from database import init_db, simpan_riwayat, ambil_riwayat, hapus_riwayat
 import requests
+from PIL import Image
 
 # ==========================
 # Download & Load Model
@@ -29,6 +30,7 @@ def load_model():
 
 # Load model
 model = load_model()
+
 
 # ==========================
 # Inisialisasi
@@ -163,4 +165,5 @@ elif st.session_state.selected_tab == "Laporan":
         st.image("loss.png", caption="Training Loss", width=400)
     if os.path.exists("reportt.png"):
         st.image("reportt.png", caption="Classification Report", width=400)
+
 
