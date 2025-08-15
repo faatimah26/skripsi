@@ -10,17 +10,25 @@ import io
 from datetime import datetime
 from fpdf import FPDF
 from database import init_db, simpan_riwayat, ambil_riwayat, hapus_riwayat
+import requests
 
 # ---------------------------
 # Load Model
 # ---------------------------
+
+
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model('D:/program skripsi/model_cnn.keras')  
-    return model
+    model_path = "model_cnn.keras"
+    if not os.path.exists(model_path):
+        url = "https://drive.google.com/uc?export=download&id=16rx9wvXlJB0PlgZkcO-uXB1SPhUOBnlN"
+        r = requests.get(url)
+        with open(model_path, "wb") as f:
+            f.write(r.content)
+    return tf.keras.models.load_model(model_path)
 
 model = load_model()
-class_names = ['blackspot', 'canker', 'fresh', 'greening']
+
 
 # ---------------------------
 # Inisialisasi & Judul
