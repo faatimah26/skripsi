@@ -30,6 +30,8 @@ def load_model():
 
 # Load model
 model = load_model()
+# Daftar kelas sesuai urutan output model
+class_names = ["blackspot", "canker", "fresh", "greening"]
 
 
 # ==========================
@@ -165,5 +167,6 @@ elif st.session_state.selected_tab == "Laporan":
         st.image("loss.png", caption="Training Loss", width=400)
     if os.path.exists("reportt.png"):
         st.image("reportt.png", caption="Classification Report", width=400)
+
 
 
