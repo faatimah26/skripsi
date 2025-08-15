@@ -153,7 +153,8 @@ elif st.session_state.selected_tab == "Laporan":
     st.markdown("Berikut merupakan hasil pelatihan model yang ditampilkan dalam grafik akurasi dan grafik loss, serta dilengkapi dengan laporan klasifikasi (classification report)." \
     "Selama proses training, model menunjukkan peningkatan akurasi hingga mencapai sekitar 94%.")
 
-    st.image("assets/accuracy.png", caption="Training Accuracy", width=400)
-st.image("assets/loss.png", caption="Training Loss", width=400)
-st.image("assets/reportt.png", caption="Classification Report", width=400)
+    st.image("accuracy.png", caption="Training Accuracy", width=400)
+st.image("loss.png", caption="Training Loss", width=400)
+st.image("reportt.png", caption="Classification Report", width=400)
+
 
